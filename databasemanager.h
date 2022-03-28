@@ -1,5 +1,4 @@
 /*
- *@file:   databasemanager.h
  *@author: 缪庆瑞
  *@date:   2017.12.13
  *@brief:  该组件提供SQLite数据库的管理操作，包括表的定义以及数据的CRUD操作。经过对比
@@ -50,6 +49,7 @@ public:
     ~DatabaseManager();
 
     bool createSqliteConnection(QString databaseName);//创建sqlite连接
+    void closeConnection();//断开连接
     bool integrityCheck();//数据库完整性检测
     /*****数据定义*******/
     //建表
@@ -92,7 +92,6 @@ public:
     //查询表是否存在
     bool isExistTable(QString tableName);
 
-    void closeConnection();//断开连接
 
 private:
     //附加数据库与分离数据库
@@ -101,7 +100,7 @@ private:
     //复制表 复制数据库表　仅执行insert的sql语句
     bool onlyCopyTable(QString srcTableName,QString desTableName);
     bool isExistTableForCopyTable(QString tableName);//查询表是否存在
-    QString getCreateTableSql(QString masterTableName,QString tableName);//获取表的创建语句
+    QString getCreateTableSqlForCopyTable(QString masterTableName,QString tableName);//获取表的创建语句
 
     QSqlDatabase db;//描述数据库连接的对象 全局共用一个数据库连接
     QString connectionName;//连接名，通过连接名可以在全局找到对应的数据库

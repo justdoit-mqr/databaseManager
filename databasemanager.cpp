@@ -1,7 +1,6 @@
 /*
- *@file:   databasemanager.cpp
  *@author: 缪庆瑞
- *@date:   2016.8.26
+ *@date:   2017.12.13
  *@brief:  操作数据库的类
  */
 #include "databasemanager.h"
@@ -32,6 +31,12 @@ DatabaseManager::~DatabaseManager()
  */
 bool DatabaseManager::createSqliteConnection(QString databaseName)
 {
+    //连接已创建
+    if(QSqlDatabase::contains(connectionName) && db.isValid())
+    {
+        return true;
+    }
+
     //目前板子的开发环境只有sqlite驱动
     db = QSqlDatabase::addDatabase("QSQLITE",connectionName);//添加数据库驱动
     //qDebug()<<db.driver()->hasFeature(QSqlDriver::Transactions);//支持事务操作
@@ -65,6 +70,25 @@ bool DatabaseManager::createSqliteConnection(QString databaseName)
         qDebug()<<"pragma synchronous error"<<query.lastError();
     }
     return true;
+}
+/*
+ *@brief:   关闭数据库连接
+ *@author:  缪庆瑞
+ *@date:    2017.12.29
+ */
+void DatabaseManager::closeConnection()
+{
+    /* 删除某个数据库连接.
+     * 根据removeDatabase()方法的帮助文档,正确的方式是在删除连接之前,先析构掉
+     * 使用该连接的query对象和db对象.因为db这里被定义成了类成员变量,不能以{}栈
+     * 的形式自动析构,所以调用该方法会提示警告(表示删除的连接正在被使用,该连接
+     * 所有的query将被强制终止),但这实际并不影响什么.
+     * 此处警告的根本原因是db有一个有效的数据库连接(isValid()),虽然db在这里无法
+     * 析构,但将其置为一个无效的对象也能解决警告的问题
+    */
+    db.close();
+    db = QSqlDatabase();//将db置为一个无效的对象
+    QSqlDatabase::removeDatabase(connectionName);
 }
 /*
  *@brief:   数据库完整性检测(结构,格式,数据记录)
@@ -114,7 +138,7 @@ bool DatabaseManager::integrityCheck()
  *  类型：NULL: 表示该值为NULL值　INTEGER: 无符号整型值　REAL: 浮点值
  *              TEXT: 文本字符串，存储使用的编码方式为UTF-8、UTF-16BE、UTF-16LE
  *              BLOB: 存储Blob数据，该类型数据和输入数据完全相同。
- *   sqlite 与一般关系数据库采用静态数据类型不同，它采用动态数据类型，根据存入
+ *  sqlite 与一般关系数据库采用静态数据类型不同，它采用动态数据类型，根据存入
  *  的值确定存储类型，属于弱类型。所以建表的时候，可以没有列类型，但为了保证
  *  数据库平台的可移植性，还是按静态数据类型声明处理，且为了最大化与其它数据
  *  库引擎之间的数据类型兼容性，同样支持通用的sql类型(int ,  varchar(20),float等 )
@@ -285,7 +309,7 @@ bool DatabaseManager::copyTable(QString srcTableName, QString desTableName)
     else
     {
         //获取源表的建表语句
-        QString createTableSql = getCreateTableSql("sqlite_master",srcTableName);
+        QString createTableSql = getCreateTableSqlForCopyTable("sqlite_master",srcTableName);
         createTableSql.replace(srcTableName,desTableName);//替换成新表名
         if(!createTable(createTableSql))
         {
@@ -341,7 +365,7 @@ bool DatabaseManager::copyTable(QString srcDbName, QString srcTableName, QString
         //附加数据库的sqlite_master
         QString attachTableName = QString("%1.sqlite_master").arg(aliasName);
         //获取源表的建表语句
-        QString createTableSql = getCreateTableSql(attachTableName,srcTableName);
+        QString createTableSql = getCreateTableSqlForCopyTable(attachTableName,srcTableName);
         createTableSql.replace(srcTableName,desTableName);//替换成新表名
         if(!createTable(createTableSql))
         {
@@ -424,8 +448,7 @@ bool DatabaseManager::insertTable(QString tableName, QVariantList &rowValues, QL
  *@brief:  批量插入多条数据
  *  此处采用的是事务操作，提高批量插入的效率。sqlite本身也是支持单sql语句批量插入的，
  *  类似insert into aa values(101,'a',10),...(105,'e',50);但我们使用的Qt封装的sqlite驱动插件版本
- * 是3.7.7.1,并不支持这种语法，使用时会出错。不过这种方法的原理和事务操作本质上是
- *  相似的，效率也差不多
+ *  是3.7.7.1,并不支持这种语法，使用时会出错。不过这种方法的原理和事务操作本质上是相似的，效率也差不多.
  *@author:  缪庆瑞
  *@date:    2018.1.4
  *@param:   tableName:表名
@@ -1114,25 +1137,6 @@ bool DatabaseManager::isExistTable(QString tableName)
     }
 }
 /*
- *@brief:   关闭数据库连接
- *@author:  缪庆瑞
- *@date:    2017.12.29
- */
-void DatabaseManager::closeConnection()
-{
-    /* 删除某个数据库连接.
-     * 根据removeDatabase()方法的帮助文档,正确的方式是在删除连接之前,先析构掉
-     * 使用该连接的query对象和db对象.因为db这里被定义成了类成员变量,不能以{}栈
-     * 的形式自动析构,所以调用该方法会提示警告(表示删除的连接正在被使用,该连接
-     * 所有的query将被强制终止),但这实际并不影响什么.
-     * 此处警告的根本原因是db有一个有效的数据库连接(isValid()),虽然db在这里无法
-     * 析构,但将其置为一个无效的对象也能解决警告的问题
-    */
-    db.close();
-    db = QSqlDatabase();//将db置为一个无效的对象
-    QSqlDatabase::removeDatabase(connectionName);
-}
-/*
  *@brief:   附加数据库　实现在一个数据库里使用另一个数据库的数据
  *@author:  缪庆瑞
  *@date:    2018.8.21
@@ -1198,13 +1202,13 @@ bool DatabaseManager::onlyCopyTable(QString srcTableName, QString desTableName)
 #ifdef MT_SAFE
     QWriteLocker locker(&readWriteLock);//写锁
 #endif
-    qDebug()<<"onlyCopyTable start time:"<<QTime::currentTime().toString("hh:mm:ss:zzz");
+    //qDebug()<<"onlyCopyTable start time:"<<QTime::currentTime().toString("hh:mm:ss:zzz");
     if(!query.exec(copySql))
     {
         qDebug()<<"copy table error:"<<query.lastError();
         return false;
     }
-    qDebug()<<"onlyCopyTable end time:"<<QTime::currentTime().toString("hh:mm:ss:zzz");
+    //qDebug()<<"onlyCopyTable end time:"<<QTime::currentTime().toString("hh:mm:ss:zzz");
     return true;
 }
 /*
@@ -1248,7 +1252,7 @@ bool DatabaseManager::isExistTableForCopyTable(QString tableName)
  *@param:   tableName: 要查的表名
  *@return:  QString:表结构的创建语句
  */
-QString DatabaseManager::getCreateTableSql(QString masterTableName, QString tableName)
+QString DatabaseManager::getCreateTableSqlForCopyTable(QString masterTableName, QString tableName)
 {
     QSqlQuery query(db);//创建sql语句执行对象
     QString selectSql = QString("select sql from %1 where type='table' and name='%2';").arg(masterTableName,tableName);
